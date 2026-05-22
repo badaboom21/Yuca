@@ -1,15 +1,15 @@
 package com.example.yuca.bdd.entity;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "produit")
-public class Produit {
+@Table(name = "categorie")
+public class Categorie {
 
     @Id
-    @GeneratedValue
-    private long id;
+    @Column(columnDefinition = "varchar(50)")
+    private String nom;
 }
