@@ -47,6 +47,6 @@ class OpenFoodFactsImportServiceTest {
     void combinedComplexCase() {
         String input = "Sucre*, farine 10% ; _Maïs_ - Pâte (Farine 50%, Sucre 20%) / miel";
         List<String> ingredients = service.parseIngredients(input);
-        assertEquals(List.of("Sucre1", "farine", "Maïs", "Pâte", "miel"), ingredients);
+        assertEquals(List.of("Sucre", "farine", "Maïs", "Pâte", "miel"), ingredients);
     }
 }
