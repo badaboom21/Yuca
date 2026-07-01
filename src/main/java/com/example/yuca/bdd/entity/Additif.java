@@ -1,27 +1,58 @@
 package com.example.yuca.bdd.entity;
 
+import java.util.HashSet;
 import java.util.Set;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "additif")
 public class Additif {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(columnDefinition = "varchar(50)", nullable = false)
-    private String nom_additif;
+    @Column(name = "nom_additif", nullable = false, length = 50)
+    private String nomAdditif;
 
-    @Column(columnDefinition = "double", nullable = false)
+    @Column(name = "qte_milligrammes", nullable = false)
     private double qteMilligrammes;
 
-    @ManyToMany
-    @JoinTable(
-            name = "produit_additif",
-            joinColumns = @JoinColumn(name = "nom_additif"),
-            inverseJoinColumns = @JoinColumn(name = "nom_produit"))
-    Set<Produit> linkedProduits;
+    @ManyToMany(mappedBy = "additifs")
+    private Set<Produit> produits = new HashSet<>();
 
+    public Additif() {
+    }
+
+    public Additif(String nomAdditif, double qteMilligrammes) {
+        this.nomAdditif = nomAdditif;
+        this.qteMilligrammes = qteMilligrammes;
+    }
+
+    public String getNomAdditif() {
+        return nomAdditif;
+    }
+
+    public void setNomAdditif(String nomAdditif) {
+        this.nomAdditif = nomAdditif;
+    }
+
+    public double getQteMilligrammes() {
+        return qteMilligrammes;
+    }
+
+    public void setQteMilligrammes(double qteMilligrammes) {
+        this.qteMilligrammes = qteMilligrammes;
+    }
+
+    public Set<Produit> getProduits() {
+        return produits;
+    }
+
+    public void setProduits(Set<Produit> produits) {
+        this.produits = produits;
+    }
 }
 
