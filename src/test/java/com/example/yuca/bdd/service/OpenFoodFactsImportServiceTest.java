@@ -2,13 +2,18 @@ package com.example.yuca.bdd.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class OpenFoodFactsImportServiceTest {
 
-    private final OpenFoodFactsImportService service = new OpenFoodFactsImportService(null, null, null, null);
+    private final OpenFoodFactsImportService service = new OpenFoodFactsImportService();
 
     @Test
     void shouldNormalizeIngredientsFromVariousSeparatorsAndNoise() {
@@ -48,5 +53,39 @@ class OpenFoodFactsImportServiceTest {
         String input = "Sucre*, farine 10% ; _Maïs_ - Pâte (Farine 50%, Sucre 20%) / miel";
         List<String> ingredients = service.parseIngredients(input);
         assertEquals(List.of("Sucre", "farine", "Maïs", "Pâte", "miel"), ingredients);
+    }
+
+    @Test
+    void shouldCleanReplacementCharactersAndParasiticMarkers() {
+        String cleaned = service.cleanText("_Orge_ mond\uFFFD", 50);
+        assertEquals("Orge mond", cleaned);
+    }
+
+    @Test
+    void shouldKeepAdditiveDescriptionHyphen() {
+        List<String> additifs = service.parseAdditifs("E500 - Carbonates de sodium,E500ii - Carbonate acide de sodium");
+        assertEquals(List.of("E500 - Carbonates de sodium", "E500ii - Carbonate acide de sodium"), additifs);
+    }
+
+    @Test
+    void shouldCleanAllergenLanguagePrefixes() {
+        List<String> allergenes = service.parseAllergenes("en:gluten,en:milk,_lait_");
+        assertEquals(List.of("gluten", "milk", "lait"), allergenes);
+    }
+
+    @Test
+    void shouldDetectWindows1252CsvEncoding(@TempDir Path tempDir) throws Exception {
+        Path csv = tempDir.resolve("off.csv");
+        Files.writeString(csv, "categorie;marque;nom\nC\u00E9r\u00E9ales;Celnat;Orge mond\u00E9\n", Charset.forName("windows-1252"));
+
+        assertEquals(Charset.forName("windows-1252"), service.detectCharset(csv));
+    }
+
+    @Test
+    void shouldDetectPipeSeparatorFromPdfFormat(@TempDir Path tempDir) throws Exception {
+        Path csv = tempDir.resolve("off.csv");
+        Files.writeString(csv, "categorie|marque|nom\nA|B|C\n", StandardCharsets.UTF_8);
+
+        assertEquals('|', service.detectSeparator(csv, StandardCharsets.UTF_8));
     }
 }
