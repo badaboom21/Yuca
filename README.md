@@ -10,13 +10,21 @@ Vous pouvez démarrer MariaDB et l’API en une seule commande :
 docker compose up --build
 ```
 
+ou si vous voulez que ça tourne en fond
+
+```bash
+docker compose up -d --build
+```
+
 ### Services disponibles
 
-- MariaDB : localhost:3306
-- API Spring Boot : http://localhost:8080
+- MariaDB : localhost:3307
+- API Spring Boot : http://localhost:8000
 
 ### Identifiants MariaDB
 
+- port : 3307
+- host : localhost
 - base : yuca
 - utilisateur : yuca
 - mot de passe : yuca
