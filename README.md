@@ -1,24 +1,25 @@
 # Yuca
 
-docker compose down -v
-docker compose up -d mariadb
-docker compose build app
-docker compose run --rm -e SPRING_JPA_SHOW_SQL=false -v "${PWD}\open-food-facts.csv:/app/open-food-facts.csv:ro" app ./mvnw spring-boot:run "-Dspring-boot.run.arguments=/app/open-food-facts.csv"
-
-Pour le projet optimisation performance backend
-
 ## Démarrage rapide avec Docker
 
-Vous pouvez démarrer MariaDB et l’API en une seule commande :
+Pour démarrer le projet suivez les étapes suivante :
+
+- Commencer par mettre en place l'image de MariaDB
 
 ```bash
-docker compose up --build
+docker compose up -d mariadb
 ```
 
-ou si vous voulez que ça tourne en fond
+- Puis build l'API
 
 ```bash
-docker compose up -d --build
+docker compose build app
+```
+
+- Puis faire lintégration des données
+
+```bash
+docker compose run --rm -e SPRING_JPA_SHOW_SQL=false -v "${PWD}\open-food-facts.csv:/app/open-food-facts.csv:ro" app ./mvnw spring-boot:run "-Dspring-boot.run.arguments=/app/open-food-facts.csv"
 ```
 
 ### Services disponibles

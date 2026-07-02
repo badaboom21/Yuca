@@ -20,6 +20,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -56,6 +58,8 @@ public class OpenFoodFactsImportService {
     private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
     private static final int PRODUCT_NAME_MAX_LENGTH = 100;
     private static final int ENTITY_NAME_MAX_LENGTH = 50;
+    private static final Pattern QUANTITY_PATTERN = Pattern.compile(
+            "(?i)(?<![\\p{L}\\p{N}])([0-9]+(?:[.,][0-9]+)?)\\s*(%|kg|mg|µg|ug|gr|grammes?|g)(?=$|[^\\p{L}\\p{N}]|(?<=%)[\\p{L}])");
 
     private final ProduitDao produitDao;
     private final IngredientDao ingredientDao;
@@ -70,9 +74,12 @@ public class OpenFoodFactsImportService {
 
     private final Map<String, Boolean> categorieCache = new ConcurrentHashMap<>();
     private final Map<String, Boolean> marqueCache = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> ingredientCache = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> allergeneCache = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> additifCache = new ConcurrentHashMap<>();
+    private final Map<String, Double> ingredientCache = new ConcurrentHashMap<>();
+    private final Map<String, Double> allergeneCache = new ConcurrentHashMap<>();
+    private final Map<String, Double> additifCache = new ConcurrentHashMap<>();
+
+    record ParsedListItem(String name, double quantityMilligrammes) {
+    }
 
     public OpenFoodFactsImportService() {
         this(null, null, null, null, null, null, null);
@@ -203,22 +210,22 @@ public class OpenFoodFactsImportService {
         fillNutritionFields(produit, row, header);
         produitDao.save(produit);
 
-        for (String ingredientName : parseIngredients(ingredientsText)) {
-            Ingredient ingredient = saveIngredient(ingredientName);
+        for (ParsedListItem ingredientItem : parseIngredientItems(ingredientsText)) {
+            Ingredient ingredient = saveIngredient(ingredientItem);
             if (ingredient != null) {
                 produit.addIngredient(ingredient);
             }
         }
 
-        for (String allergeneName : parseAllergenes(allergenesText)) {
-            Allergene allergene = saveAllergene(allergeneName);
+        for (ParsedListItem allergeneItem : parseAllergeneItems(allergenesText)) {
+            Allergene allergene = saveAllergene(allergeneItem);
             if (allergene != null) {
                 produit.addAllergene(allergene);
             }
         }
 
-        for (String additifName : parseAdditifs(additifsText)) {
-            Additif additif = saveAdditif(additifName);
+        for (ParsedListItem additifItem : parseAdditifItems(additifsText)) {
+            Additif additif = saveAdditif(additifItem);
             if (additif != null) {
                 produit.addAdditif(additif);
             }
@@ -287,53 +294,144 @@ public class OpenFoodFactsImportService {
     }
 
     List<String> parseIngredients(String rawIngredients) {
-        return parseListValues(rawIngredients, true);
+        return parseIngredientItems(rawIngredients).stream()
+                .map(ParsedListItem::name)
+                .toList();
     }
 
     List<String> parseAllergenes(String rawAllergenes) {
-        return parseListValues(rawAllergenes, false);
+        return parseAllergeneItems(rawAllergenes).stream()
+                .map(ParsedListItem::name)
+                .toList();
     }
 
     List<String> parseAdditifs(String rawAdditifs) {
-        return parseListValues(rawAdditifs, false);
+        return parseAdditifItems(rawAdditifs).stream()
+                .map(ParsedListItem::name)
+                .toList();
     }
 
-    private List<String> parseListValues(String rawValue, boolean splitOnDash) {
+    List<ParsedListItem> parseIngredientItems(String rawIngredients) {
+        return parseListItems(rawIngredients, true);
+    }
+
+    List<ParsedListItem> parseAllergeneItems(String rawAllergenes) {
+        return parseListItems(rawAllergenes, false);
+    }
+
+    List<ParsedListItem> parseAdditifItems(String rawAdditifs) {
+        return parseListItems(rawAdditifs, false);
+    }
+
+    private List<ParsedListItem> parseListItems(String rawValue, boolean splitOnDash) {
         if (rawValue == null || rawValue.isBlank()) {
             return List.of();
         }
 
         String sanitized = rawValue
                 .replaceAll("\\([^)]*\\)", "")
-                .replaceAll("\\b\\d+(?:[.,]\\d+)?\\s*%", "")
                 .replaceAll("\\b[a-z]{2}:", "")
                 .trim();
 
         String splitPattern = splitOnDash ? "[,;/|]+|\\s+-\\s+" : "[,;/|]+";
-        LinkedHashSet<String> parts = new LinkedHashSet<>();
+        Map<String, ParsedListItem> parts = new java.util.LinkedHashMap<>();
         for (String candidate : sanitized.split(splitPattern)) {
-            String cleaned = cleanText(candidate, ENTITY_NAME_MAX_LENGTH);
-            if (!cleaned.isEmpty()) {
-                parts.add(cleaned);
+            ParsedListItem parsedItem = parseListItem(candidate);
+            if (!parsedItem.name().isEmpty()) {
+                parts.merge(parsedItem.name(), parsedItem, (current, incoming) ->
+                        incoming.quantityMilligrammes() > current.quantityMilligrammes() ? incoming : current);
             }
         }
 
-        return List.copyOf(parts);
+        return List.copyOf(parts.values());
     }
 
-    private Ingredient saveIngredient(String name) {
-        String normalized = cleanText(name, ENTITY_NAME_MAX_LENGTH);
+    ParsedListItem parseListItem(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return new ParsedListItem("", 0.0);
+        }
+
+        String withoutNotes = removeQuantityContextNotes(rawValue);
+        Matcher matcher = QUANTITY_PATTERN.matcher(withoutNotes);
+        double quantityMilligrammes = 0.0;
+        if (matcher.find()) {
+            quantityMilligrammes = convertQuantityToMilligrammes(matcher.group(1), matcher.group(2));
+        }
+
+        String withoutQuantity = QUANTITY_PATTERN.matcher(withoutNotes).replaceAll(" ");
+        String cleanedName = cleanText(withoutQuantity, ENTITY_NAME_MAX_LENGTH)
+                .replaceAll("(?i)^(?:de|d['’])\\s+", "")
+                .trim();
+
+        if (isIgnoredListItemName(cleanedName)) {
+            return new ParsedListItem("", 0.0);
+        }
+
+        return new ParsedListItem(cleanText(cleanedName, ENTITY_NAME_MAX_LENGTH), quantityMilligrammes);
+    }
+
+    private String removeQuantityContextNotes(String value) {
+        return value
+                .replaceAll("(?i)\\b(?:quantit[eé]s?\\s+)?mise?s?\\s+en\\s+(?:oeuvre|œuvre)\\b.*", "")
+                .replaceAll("(?i)\\bmis(?:e|es)?\\s+en\\s+(?:oeuvre|œuvre)\\b.*", "")
+                .replaceAll("(?i)\\bpr[eé]par[ée]e?\\s+avec\\b.*", "")
+                .replaceAll("(?i)\\bteneur\\b.*", "")
+                .replaceAll("(?i)\\b(?:pour|par)\\s+\\d+(?:[.,]\\d+)?\\s*(?:kg|g|mg|µg|ug)\\b.*", "");
+    }
+
+    private boolean isIgnoredListItemName(String name) {
+        if (name == null || name.isBlank()) {
+            return true;
+        }
+        String normalized = name.toLowerCase();
+        return normalized.equals("minimum")
+                || normalized.equals("produit")
+                || normalized.equals("produit fini")
+                || normalized.contains("produit fini")
+                || normalized.startsWith("pour ")
+                || normalized.startsWith("par ")
+                || normalized.startsWith("quantite ")
+                || normalized.startsWith("quantité ");
+    }
+
+    private double convertQuantityToMilligrammes(String rawNumber, String rawUnit) {
+        Double value = parseDoubleValue(rawNumber);
+        if (value == null) {
+            return 0.0;
+        }
+
+        String unit = rawUnit.toLowerCase();
+        return switch (unit) {
+            case "kg" -> value * 1_000_000.0;
+            case "g", "gr", "gramme", "grammes" -> value * 1_000.0;
+            case "mg" -> value;
+            case "µg", "ug" -> value / 1_000.0;
+            case "%" -> value * 1_000.0;
+            default -> 0.0;
+        };
+    }
+
+    private Ingredient saveIngredient(ParsedListItem item) {
+        String normalized = cleanText(item.name(), ENTITY_NAME_MAX_LENGTH);
         if (normalized.isBlank()) {
             return null;
         }
 
-        ingredientCache.computeIfAbsent(normalized, key -> {
-            ingredientDao.findById(key).orElseGet(() -> {
-                Ingredient ingredient = new Ingredient(key, 0.0);
-                ingredientDao.save(ingredient);
-                return ingredient;
-            });
-            return Boolean.TRUE;
+        ingredientCache.compute(normalized, (key, cachedQuantity) -> {
+            double quantity = item.quantityMilligrammes();
+            if (cachedQuantity == null) {
+                Ingredient ingredient = ingredientDao.findById(key).orElseGet(() -> {
+                    Ingredient newIngredient = new Ingredient(key, quantity);
+                    ingredientDao.save(newIngredient);
+                    return newIngredient;
+                });
+                return updateIngredientQuantityIfHigher(ingredient, quantity);
+            }
+            if (quantity > cachedQuantity) {
+                ingredientDao.findById(key).ifPresent(ingredient -> updateIngredientQuantityIfHigher(ingredient, quantity));
+                return quantity;
+            }
+            return cachedQuantity;
         });
 
         return entityManager.getReference(Ingredient.class, normalized);
@@ -375,40 +473,80 @@ public class OpenFoodFactsImportService {
         return entityManager.getReference(Marque.class, normalized);
     }
 
-    private Allergene saveAllergene(String name) {
-        String normalized = cleanText(name, ENTITY_NAME_MAX_LENGTH);
+    private Allergene saveAllergene(ParsedListItem item) {
+        String normalized = cleanText(item.name(), ENTITY_NAME_MAX_LENGTH);
         if (normalized.isBlank()) {
             return null;
         }
 
-        allergeneCache.computeIfAbsent(normalized, key -> {
-            allergeneDao.findById(key).orElseGet(() -> {
-                Allergene allergene = new Allergene(key, 0.0);
-                allergeneDao.save(allergene);
-                return allergene;
-            });
-            return Boolean.TRUE;
+        allergeneCache.compute(normalized, (key, cachedQuantity) -> {
+            double quantity = item.quantityMilligrammes();
+            if (cachedQuantity == null) {
+                Allergene allergene = allergeneDao.findById(key).orElseGet(() -> {
+                    Allergene newAllergene = new Allergene(key, quantity);
+                    allergeneDao.save(newAllergene);
+                    return newAllergene;
+                });
+                return updateAllergeneQuantityIfHigher(allergene, quantity);
+            }
+            if (quantity > cachedQuantity) {
+                allergeneDao.findById(key).ifPresent(allergene -> updateAllergeneQuantityIfHigher(allergene, quantity));
+                return quantity;
+            }
+            return cachedQuantity;
         });
 
         return entityManager.getReference(Allergene.class, normalized);
     }
 
-    private Additif saveAdditif(String name) {
-        String normalized = cleanText(name, ENTITY_NAME_MAX_LENGTH);
+    private Additif saveAdditif(ParsedListItem item) {
+        String normalized = cleanText(item.name(), ENTITY_NAME_MAX_LENGTH);
         if (normalized.isBlank()) {
             return null;
         }
 
-        additifCache.computeIfAbsent(normalized, key -> {
-            additifDao.findById(key).orElseGet(() -> {
-                Additif additif = new Additif(key, 0.0);
-                additifDao.save(additif);
-                return additif;
-            });
-            return Boolean.TRUE;
+        additifCache.compute(normalized, (key, cachedQuantity) -> {
+            double quantity = item.quantityMilligrammes();
+            if (cachedQuantity == null) {
+                Additif additif = additifDao.findById(key).orElseGet(() -> {
+                    Additif newAdditif = new Additif(key, quantity);
+                    additifDao.save(newAdditif);
+                    return newAdditif;
+                });
+                return updateAdditifQuantityIfHigher(additif, quantity);
+            }
+            if (quantity > cachedQuantity) {
+                additifDao.findById(key).ifPresent(additif -> updateAdditifQuantityIfHigher(additif, quantity));
+                return quantity;
+            }
+            return cachedQuantity;
         });
 
         return entityManager.getReference(Additif.class, normalized);
+    }
+
+    private double updateIngredientQuantityIfHigher(Ingredient ingredient, double quantityMilligrammes) {
+        if (quantityMilligrammes > ingredient.getQteMilligrammes()) {
+            ingredient.setQteMilligrammes(quantityMilligrammes);
+            ingredientDao.update(ingredient);
+        }
+        return Math.max(ingredient.getQteMilligrammes(), quantityMilligrammes);
+    }
+
+    private double updateAllergeneQuantityIfHigher(Allergene allergene, double quantityMilligrammes) {
+        if (quantityMilligrammes > allergene.getQteMilligrammes()) {
+            allergene.setQteMilligrammes(quantityMilligrammes);
+            allergeneDao.update(allergene);
+        }
+        return Math.max(allergene.getQteMilligrammes(), quantityMilligrammes);
+    }
+
+    private double updateAdditifQuantityIfHigher(Additif additif, double quantityMilligrammes) {
+        if (quantityMilligrammes > additif.getQteMilligrammes()) {
+            additif.setQteMilligrammes(quantityMilligrammes);
+            additifDao.update(additif);
+        }
+        return Math.max(additif.getQteMilligrammes(), quantityMilligrammes);
     }
 
     String cleanText(String value, int maxLength) {

@@ -103,4 +103,36 @@ class OpenFoodFactsImportServiceTest {
         assertEquals(Boolean.FALSE, service.parseBooleanValue("0"));
         assertEquals(null, service.parseBooleanValue(""));
     }
+
+    @Test
+    void shouldExtractGramQuantityFromIngredientName() {
+        OpenFoodFactsImportService.ParsedListItem item = service.parseListItem("Polenta 89.9 g");
+
+        assertEquals("Polenta", item.name());
+        assertEquals(89_900.0, item.quantityMilligrammes());
+    }
+
+    @Test
+    void shouldExtractPercentageAsMilligrammesForOneHundredGrams() {
+        OpenFoodFactsImportService.ParsedListItem item = service.parseListItem("Farine de riz* 82 %");
+
+        assertEquals("Farine de riz", item.name());
+        assertEquals(82_000.0, item.quantityMilligrammes());
+    }
+
+    @Test
+    void shouldExtractMilligramQuantityFromAdditiveOrAllergenName() {
+        OpenFoodFactsImportService.ParsedListItem item = service.parseListItem("E300 - Acide ascorbique 1000 mg");
+
+        assertEquals("E300 - Acide ascorbique", item.name());
+        assertEquals(1_000.0, item.quantityMilligrammes());
+    }
+
+    @Test
+    void shouldExtractQuantityAtBeginningOfIngredientName() {
+        OpenFoodFactsImportService.ParsedListItem item = service.parseListItem("100%viande de boeuf");
+
+        assertEquals("viande de boeuf", item.name());
+        assertEquals(100_000.0, item.quantityMilligrammes());
+    }
 }
