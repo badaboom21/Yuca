@@ -1,5 +1,10 @@
 # Yuca
 
+docker compose down -v
+docker compose up -d mariadb
+docker compose build app
+docker compose run --rm -e SPRING_JPA_SHOW_SQL=false -v "${PWD}\open-food-facts.csv:/app/open-food-facts.csv:ro" app ./mvnw spring-boot:run "-Dspring-boot.run.arguments=/app/open-food-facts.csv"
+
 Pour le projet optimisation performance backend
 
 ## Démarrage rapide avec Docker

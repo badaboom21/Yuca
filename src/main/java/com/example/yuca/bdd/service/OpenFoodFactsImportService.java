@@ -200,6 +200,7 @@ public class OpenFoodFactsImportService {
         Marque marque = saveMarque(marqueName);
 
         Produit produit = new Produit(nom, grade, categorie, marque);
+        fillNutritionFields(produit, row, header);
         produitDao.save(produit);
 
         for (String ingredientName : parseIngredients(ingredientsText)) {
@@ -224,6 +225,65 @@ public class OpenFoodFactsImportService {
         }
 
         importedCount.incrementAndGet();
+    }
+
+    private void fillNutritionFields(Produit produit, String[] row, String[] header) {
+        produit.setEnergie100g(parseDoubleValue(getValue(row, header, "energie100g", "energy_100g", "energy-kj_100g")));
+        produit.setGraisse100g(parseDoubleValue(getValue(row, header, "graisse100g", "fat_100g")));
+        produit.setSucres100g(parseDoubleValue(getValue(row, header, "sucres100g", "sugars_100g")));
+        produit.setFibres100g(parseDoubleValue(getValue(row, header, "fibres100g", "fiber_100g", "fibre_100g")));
+        produit.setProteines100g(parseDoubleValue(getValue(row, header, "proteines100g", "proteins_100g")));
+        produit.setSel100g(parseDoubleValue(getValue(row, header, "sel100g", "salt_100g")));
+        produit.setVitA100g(parseDoubleValue(getValue(row, header, "vitA100g", "vitamin-a_100g")));
+        produit.setVitD100g(parseDoubleValue(getValue(row, header, "vitD100g", "vitamin-d_100g")));
+        produit.setVitE100g(parseDoubleValue(getValue(row, header, "vitE100g", "vitamin-e_100g")));
+        produit.setVitK100g(parseDoubleValue(getValue(row, header, "vitK100g", "vitamin-k_100g")));
+        produit.setVitC100g(parseDoubleValue(getValue(row, header, "vitC100g", "vitamin-c_100g")));
+        produit.setVitB1100g(parseDoubleValue(getValue(row, header, "vitB1100g", "vitamin-b1_100g")));
+        produit.setVitB2100g(parseDoubleValue(getValue(row, header, "vitB2100g", "vitamin-b2_100g")));
+        produit.setVitPP100g(parseDoubleValue(getValue(row, header, "vitPP100g", "vitamin-pp_100g", "vitamin-b3_100g")));
+        produit.setVitB6100g(parseDoubleValue(getValue(row, header, "vitB6100g", "vitamin-b6_100g")));
+        produit.setVitB9100g(parseDoubleValue(getValue(row, header, "vitB9100g", "vitamin-b9_100g")));
+        produit.setVitB12100g(parseDoubleValue(getValue(row, header, "vitB12100g", "vitamin-b12_100g")));
+        produit.setCalcium100g(parseDoubleValue(getValue(row, header, "calcium100g", "calcium_100g")));
+        produit.setMagnesium100g(parseDoubleValue(getValue(row, header, "magnesium100g", "magnesium_100g")));
+        produit.setIron100g(parseDoubleValue(getValue(row, header, "iron100g", "iron_100g")));
+        produit.setFer100g(parseDoubleValue(getValue(row, header, "fer100g")));
+        produit.setBetaCarotene100g(parseDoubleValue(getValue(row, header, "betaCarotene100g", "beta-carotene_100g")));
+        produit.setPresenceHuilePalme(parseBooleanValue(getValue(row, header, "presenceHuilePalme", "palm_oil", "palm-oil")));
+    }
+
+    Double parseDoubleValue(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim()
+                .replace(',', '.')
+                .replaceAll("\\s+", "");
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Double.valueOf(normalized);
+        } catch (NumberFormatException e) {
+            log.debug("Valeur numerique ignoree pendant l'import CSV : {}", value);
+            return null;
+        }
+    }
+
+    Boolean parseBooleanValue(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim().toLowerCase();
+        return switch (normalized) {
+            case "1", "true", "oui", "yes" -> Boolean.TRUE;
+            case "0", "false", "non", "no" -> Boolean.FALSE;
+            default -> null;
+        };
     }
 
     List<String> parseIngredients(String rawIngredients) {

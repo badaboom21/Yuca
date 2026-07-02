@@ -88,4 +88,19 @@ class OpenFoodFactsImportServiceTest {
 
         assertEquals('|', service.detectSeparator(csv, StandardCharsets.UTF_8));
     }
+
+    @Test
+    void shouldParseNutritionNumbers() {
+        assertEquals(0.499999999999999, service.parseDoubleValue("0.499999999999999"));
+        assertEquals(1.25, service.parseDoubleValue("1,25"));
+        assertEquals(null, service.parseDoubleValue(""));
+        assertEquals(null, service.parseDoubleValue("non numeric"));
+    }
+
+    @Test
+    void shouldParsePalmOilPresence() {
+        assertEquals(Boolean.TRUE, service.parseBooleanValue("1"));
+        assertEquals(Boolean.FALSE, service.parseBooleanValue("0"));
+        assertEquals(null, service.parseBooleanValue(""));
+    }
 }
