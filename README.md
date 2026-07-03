@@ -22,10 +22,18 @@ docker compose build app
 docker compose run --rm -e SPRING_JPA_SHOW_SQL=false -v "${PWD}\open-food-facts.csv:/app/open-food-facts.csv:ro" app ./mvnw spring-boot:run "-Dspring-boot.run.arguments=/app/open-food-facts.csv"
 ```
 
+- Pour lancer le serveur
+
+```bash
+docker compose up --build
+```
+
 ### Services disponibles
 
 - MariaDB : localhost:3307
 - API Spring Boot : http://localhost:8000
+- Swagger UI : http://localhost:8000/swagger-ui.html
+- OpenAPI JSON : http://localhost:8000/v3/api-docs
 
 ### Identifiants MariaDB
 
