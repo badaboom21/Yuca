@@ -1,5 +1,13 @@
 # Yuca
 
+## Auteurs
+
+Développeur de la classe M2 Dev full stack
+
+- Jonathan Boulay
+- Mathis Caprin
+- Tom Delépine
+
 ## Démarrage rapide avec Docker
 
 Pour démarrer le projet suivez les étapes suivante :
